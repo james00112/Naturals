@@ -7,21 +7,19 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json());
 app.use(express.static('public'));
 
-// MongoDB Connection - Using your local database
-const MONGODB_URI = 'mongodb://localhost:27017/plant_encyclopedia';
-
-mongoose.connect(MONGODB_URI)
-  .then(() => console.log('✅ Connected to MongoDB - plant_encyclopedia'))
+// Connect to your MongoDB
+mongoose.connect('mongodb://localhost:27017/plant_encyclopedia')
+  .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB Error:', err));
 
-// Plant Schema (matches your collection structure)
+// Plant Schema (using your existing 'plant' collection)
 const plantSchema = new mongoose.Schema({
-  name: { type: String, required: true },
-  scientificName: { type: String, required: true },
-  category: { type: String, required: true, enum: ['plant', 'tree', 'flower', 'fruit'] },
+  name: String,
+  scientificName: String,
+  category: String,
   description: String,
   detailedInfo: String,
   mainImage: String,
@@ -40,26 +38,24 @@ const plantSchema = new mongoose.Schema({
   },
   origin: String,
   family: String,
-  difficulty: { type: String, default: 'beginner' },
-  toxicity: { type: String, default: 'non-toxic' },
+  difficulty: String,
+  toxicity: String,
   tags: [String],
   commonUses: [String],
   funFacts: [String],
   contributor: String,
-  isUserContribution: { type: Boolean, default: false },
+  isUserContribution: Boolean,
   likes: { type: Number, default: 0 },
   views: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }
-}, { collection: 'plant' }); // Use your existing 'plant' collection
+}, { collection: 'plant' }); // Uses your existing collection
 
 const Plant = mongoose.model('Plant', plantSchema);
 
-// API Routes
-
-// Get all plants
+// GET all plants
 app.get('/api/plants', async (req, res) => {
   try {
-    const { category, search, page = 1, limit = 12 } = req.query;
+    const { category, search } = req.query;
     let query = {};
     
     if (category && category !== 'all') query.category = category;
@@ -67,39 +63,24 @@ app.get('/api/plants', async (req, res) => {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
         { scientificName: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { origin: { $regex: search, $options: 'i' } },
-        { family: { $regex: search, $options: 'i' } }
+        { description: { $regex: search, $options: 'i' } }
       ];
     }
     
-    const plants = await Plant.find(query)
-      .sort({ createdAt: -1 })
-      .skip((page - 1) * limit)
-      .limit(parseInt(limit));
-    
-    const total = await Plant.countDocuments(query);
-    
-    res.json({
-      success: true,
-      data: plants,
-      total,
-      totalPages: Math.ceil(total / limit),
-      currentPage: parseInt(page)
-    });
+    const plants = await Plant.find(query).sort({ createdAt: -1 });
+    res.json({ success: true, data: plants, total: plants.length });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Get single plant
+// GET single plant
 app.get('/api/plants/:id', async (req, res) => {
   try {
     const plant = await Plant.findById(req.params.id);
     if (!plant) return res.status(404).json({ success: false, message: 'Not found' });
     
-    // Increment views
-    plant.views += 1;
+    plant.views = (plant.views || 0) + 1;
     await plant.save();
     
     res.json({ success: true, data: plant });
@@ -108,17 +89,17 @@ app.get('/api/plants/:id', async (req, res) => {
   }
 });
 
-// Add new plant
+// POST new plant
 app.post('/api/plants', async (req, res) => {
   try {
     const plant = await Plant.create(req.body);
-    res.status(201).json({ success: true, data: plant, message: 'Plant added successfully!' });
+    res.status(201).json({ success: true, data: plant });
   } catch (error) {
     res.status(400).json({ success: false, message: error.message });
   }
 });
 
-// Like a plant
+// POST like
 app.post('/api/plants/:id/like', async (req, res) => {
   try {
     const plant = await Plant.findByIdAndUpdate(
@@ -126,35 +107,39 @@ app.post('/api/plants/:id/like', async (req, res) => {
       { $inc: { likes: 1 } },
       { new: true }
     );
-    res.json({ success: true, likes: plant.likes });
+    res.json({ success: true, likes: plant?.likes || 0 });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Get statistics
+// GET statistics
 app.get('/api/stats', async (req, res) => {
   try {
     const total = await Plant.countDocuments();
+    
     const categories = await Plant.aggregate([
       { $group: { _id: '$category', count: { $sum: 1 } } }
     ]);
+    
     const contributions = await Plant.countDocuments({ isUserContribution: true });
     
-    const categoryData = {};
+    // Convert to object
+    const categoryObj = {};
     categories.forEach(c => {
-      categoryData[c._id] = c.count;
+      if (c._id) categoryObj[c._id] = c.count;
     });
     
-    res.json({ 
-      success: true, 
-      data: { 
-        total, 
-        categories: categoryData, 
-        contributions 
-      } 
+    res.json({
+      success: true,
+      data: {
+        total: total,
+        categories: categoryObj,
+        contributions: contributions
+      }
     });
   } catch (error) {
+    console.error('Stats error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -164,9 +149,10 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// Start server
 const PORT = 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
-  console.log(`📦 Connected to database: plant_encyclopedia`);
-  console.log(`📂 Using collection: plant`);
+  console.log(`📦 Database: plant_encyclopedia`);
+  console.log(`📂 Collection: plant`);
 });

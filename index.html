@@ -859,118 +859,162 @@
   </div>
 
   <script>
-    // Sample plant data
-    const samplePlants = [
-      {
-        _id: '1',
-        name: 'Monstera Deliciosa',
-        scientificName: 'Monstera deliciosa',
-        category: 'plant',
-        description: 'The Swiss Cheese Plant, known for its distinctive holey leaves and tropical appearance.',
-        detailedInfo: 'Monstera deliciosa is a species of flowering plant native to tropical forests of southern Mexico, south to Panama. It has been introduced to many tropical areas and has become a mildly invasive species in Hawaii, Seychelles, Ascension Island and the Society Islands.',
-        mainImage: 'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?w=400',
-        images: [
-          { url: 'https://images.unsplash.com/photo-1614594975525-e45190c55d0b?w=400', alt: 'Monstera leaf', caption: 'Characteristic split leaves' }
-        ],
-        characteristics: { height: 'Up to 20m in wild, 2-3m indoors', spread: '1-2m', growthRate: 'Moderate to fast', lifespan: 'Perennial' },
-        careInstructions: { sunlight: 'Bright indirect light', water: 'Moderate, allow top soil to dry', soil: 'Well-draining potting mix', temperature: '18-27°C (65-80°F)' },
-        origin: 'Central America',
-        family: 'Araceae',
-        difficulty: 'beginner',
-        toxicity: 'mildly-toxic',
-        petFriendly: false,
-        commonUses: ['Ornamental houseplant', 'Air purification', 'Interior decoration'],
-        funFacts: ['The fruit is edible and tastes like a mix of banana and pineapple', 'The holes in leaves help the plant withstand strong winds'],
-        tags: ['tropical', 'indoor', 'climbing', 'large-leaves'],
-        likes: 42,
-        views: 156,
-        isUserContribution: false
-      },
-      {
-        _id: '2',
-        name: 'Japanese Maple',
-        scientificName: 'Acer palmatum',
-        category: 'tree',
-        description: 'A stunning ornamental tree known for its delicate, colorful foliage and elegant form.',
-        detailedInfo: 'Acer palmatum, commonly known as Japanese maple, is a species of woody plant native to Japan, Korea, China, eastern Mongolia, and southeast Russia.',
-        mainImage: 'https://images.unsplash.com/photo-1588790432-3f94b7f2b0b8?w=400',
-        images: [
-          { url: 'https://images.unsplash.com/photo-1588790432-3f94b7f2b0b8?w=400', alt: 'Japanese maple', caption: 'Stunning fall colors' }
-        ],
-        characteristics: { height: '4-10m', spread: '3-8m', growthRate: 'Slow to moderate', lifespan: '100+ years' },
-        careInstructions: { sunlight: 'Partial shade to full sun', water: 'Regular, keep soil moist', soil: 'Well-draining, slightly acidic', temperature: '-20°C to 30°C' },
-        origin: 'Japan, Korea, China',
-        family: 'Sapindaceae',
-        difficulty: 'intermediate',
-        toxicity: 'non-toxic',
-        petFriendly: true,
-        commonUses: ['Ornamental garden tree', 'Bonsai', 'Landscape design'],
-        funFacts: ['There are over 1,000 cultivars of Japanese maple', 'The leaves can have 5, 7, or 9 pointed lobes'],
-        tags: ['ornamental', 'autumn-colors', 'bonsai', 'deciduous'],
-        likes: 35,
-        views: 128,
-        isUserContribution: false
-      },
-      {
-        _id: '3',
-        name: 'Hybrid Tea Rose',
-        scientificName: 'Rosa × hybrida',
-        category: 'flower',
-        description: 'The classic garden rose, beloved for its beauty, fragrance, and elegant blooms.',
-        detailedInfo: 'Hybrid tea roses are the most popular type of rose grown today. They are known for their large, high-centered blooms with many petals.',
-        mainImage: 'https://images.unsplash.com/photo-1494972308805-463bc619d34e?w=400',
-        images: [
-          { url: 'https://images.unsplash.com/photo-1494972308805-463bc619d34e?w=400', alt: 'Red rose', caption: 'Classic red rose' }
-        ],
-        characteristics: { height: '0.6-1.8m', spread: '0.6-1.2m', growthRate: 'Moderate', lifespan: 'Perennial, 15-30 years' },
-        careInstructions: { sunlight: 'Full sun, at least 6 hours', water: 'Regular deep watering', soil: 'Rich, well-draining loam', temperature: '15-28°C optimal' },
-        origin: 'Asia, Europe, North America',
-        family: 'Rosaceae',
-        difficulty: 'intermediate',
-        toxicity: 'non-toxic',
-        petFriendly: true,
-        bloomingSeason: 'Late spring to fall',
-        commonUses: ['Cut flowers', 'Garden ornamental', 'Perfume production'],
-        funFacts: ['The oldest living rose is over 1,000 years old in Germany', 'Rose hips contain more vitamin C than oranges'],
-        tags: ['fragrant', 'garden', 'cut-flowers', 'classic'],
-        likes: 28,
-        views: 95,
-        isUserContribution: false
-      },
-      {
-        _id: '4',
-        name: 'Alphonso Mango',
-        scientificName: 'Mangifera indica',
-        category: 'fruit',
-        description: 'The King of Mangoes, prized for its rich, creamy texture and sweet, aromatic flavor.',
-        detailedInfo: 'The Alphonso mango is considered one of the best varieties of mango in the world. Named after Afonso de Albuquerque, it is grown primarily in the Konkan region of India.',
-        mainImage: 'https://images.unsplash.com/photo-1553279768-865429fa0078?w=400',
-        images: [
-          { url: 'https://images.unsplash.com/photo-1553279768-865429fa0078?w=400', alt: 'Ripe mangoes', caption: 'Fresh Alphonso mangoes' }
-        ],
-        characteristics: { height: 'Up to 35m', spread: '10-15m', growthRate: 'Fast', lifespan: '100-300 years' },
-        careInstructions: { sunlight: 'Full sun', water: 'Regular when young, drought-tolerant when established', soil: 'Well-draining, deep soil', temperature: '24-30°C optimal' },
-        origin: 'India',
-        family: 'Anacardiaceae',
-        difficulty: 'beginner',
-        toxicity: 'non-toxic',
-        petFriendly: true,
-        fruitSeason: 'March to June',
-        commonUses: ['Fresh fruit', 'Juices and smoothies', 'Desserts'],
-        funFacts: ['Mangoes are related to cashews and pistachios', 'India produces over 40% of the world\'s mangoes'],
-        tags: ['tropical', 'fruit-tree', 'edible', 'summer', 'sweet'],
-        likes: 56,
-        views: 203,
-        isUserContribution: false
-      }
-    ];
-
+    const API_URL = '/api/plants';
     let currentCategory = 'all';
     let currentSearch = '';
+    let allPlants = [];
+
+    // Load plants from MongoDB
+    async function loadPlants() {
+      showLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (currentCategory !== 'all') params.append('category', currentCategory);
+        if (currentSearch) params.append('search', currentSearch);
+        
+        const response = await fetch(`${API_URL}?${params}`);
+        const data = await response.json();
+        
+        if (data.success) {
+          allPlants = data.data;
+          renderPlants(data.data);
+        }
+      } catch (error) {
+        console.error('Error loading plants:', error);
+        // Fallback to sample data if API fails
+        renderPlants(samplePlants);
+      } finally {
+        showLoading(false);
+      }
+    }
+
+    // Add new plant to MongoDB
+    async function handleContribution(event) {
+      event.preventDefault();
+      
+      const form = event.target;
+      const formData = new FormData(form);
+      
+      const newPlant = {
+        name: formData.get('name'),
+        scientificName: formData.get('scientificName'),
+        category: formData.get('category'),
+        description: formData.get('description'),
+        detailedInfo: formData.get('detailedInfo') || formData.get('description'),
+        mainImage: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400',
+        origin: formData.get('origin'),
+        family: formData.get('family') || '',
+        difficulty: formData.get('difficulty') || 'beginner',
+        toxicity: formData.get('toxicity') || 'non-toxic',
+        careInstructions: {
+          sunlight: formData.get('sunlight') || 'Not specified',
+          water: formData.get('water') || 'Not specified',
+          soil: formData.get('soil') || '',
+          temperature: formData.get('temperature') || ''
+        },
+        characteristics: {
+          height: '',
+          spread: '',
+          growthRate: '',
+          lifespan: ''
+        },
+        tags: formData.get('tags') ? formData.get('tags').split(',').map(t => t.trim()) : [],
+        contributor: formData.get('contributor') || 'Anonymous',
+        isUserContribution: true
+      };
+
+      try {
+        const response = await fetch(API_URL, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newPlant)
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+          alert('✅ Plant contribution submitted successfully!');
+          closeContributeModal();
+          form.reset();
+          document.getElementById('mainImagePreview').innerHTML = '';
+          document.getElementById('additionalImagesPreview').innerHTML = '';
+          loadPlants(); // Reload from database
+        } else {
+          alert('❌ Error: ' + data.message);
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        // Fallback to local storage
+        newPlant._id = String(Date.now());
+        samplePlants.unshift(newPlant);
+        allPlants.unshift(newPlant);
+        renderPlants(allPlants);
+        alert('✅ Plant added locally (server not connected)');
+        closeContributeModal();
+        form.reset();
+      }
+    }
+
+    // Like a plant
+    async function likePlant(id) {
+      try {
+        const response = await fetch(`${API_URL}/${id}/like`, { method: 'POST' });
+        const data = await response.json();
+        if (data.success) {
+          loadPlants(); // Reload to update likes
+        }
+      } catch (error) {
+        console.error('Error liking plant:', error);
+      }
+    }
+
+    // Show stats from database
+    async function showStats() {
+      try {
+        const response = await fetch('/api/stats');
+        const data = await response.json();
+        
+        if (data.success) {
+          const stats = data.data;
+          const categories = {};
+          stats.categories.forEach(c => {
+            categories[c._id] = c.count;
+          });
+          
+          document.getElementById('statsContent').innerHTML = `
+            <div class="stats-grid">
+              <div class="stat-card">
+                <i class="fas fa-database" style="color: #2d5a27;"></i>
+                <h3>Total Species</h3>
+                <p class="stat-number">${stats.total}</p>
+              </div>
+              <div class="stat-card">
+                <i class="fas fa-users" style="color: #ff9800;"></i>
+                <h3>Community</h3>
+                <p class="stat-number">${stats.contributions}</p>
+              </div>
+              ${Object.entries(categories).map(([cat, count]) => `
+                <div class="stat-card">
+                  <i class="fas fa-${cat === 'plant' ? 'leaf' : cat === 'tree' ? 'tree' : cat === 'flower' ? 'spa' : 'apple-alt'}" style="color: #4caf50;"></i>
+                  <h3>${cat.charAt(0).toUpperCase() + cat.slice(1)}s</h3>
+                  <p class="stat-number">${count}</p>
+                </div>
+              `).join('')}
+            </div>
+          `;
+        }
+      } catch (error) {
+        console.error('Error loading stats:', error);
+        // Fallback to local stats
+        showLocalStats();
+      }
+      
+      document.getElementById('statsModal').style.display = 'block';
+    }
 
     // Initialize
     document.addEventListener('DOMContentLoaded', () => {
-      renderPlants(samplePlants);
+      loadPlants(); // Try to load from MongoDB first
     });
 
     // Render plants

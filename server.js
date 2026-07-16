@@ -1,66 +1,68 @@
-// can add to database but statistics are not functioning and the image file uploaded when uploading new data/species are not generated
 const express = require('express');
-const mongoose = require('mongoose');
 const cors = require('cors');
-const path = require('path');
+const mongoose = require('mongoose');
 
 const app = express();
+const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
 
-// Connect to your MongoDB
-// mongoose.connect('mongodb://localhost:27017/plant_encyclopedia')
-mongoose.connect('mongodb+srv://ydummy916_db_user:Slsu0124@webtesting.8sruqhq.mongodb.net/plant_encyclopedia')
-  .then(() => console.log('✅ Connected to MongoDB'))
-  .catch(err => console.error('❌ MongoDB Error:', err));
+// MongoDB connection
+const MONGODB_URI = 'mongodb+srv://ydummy916_db_user:Slsu0124@webtesting.8sruqhq.mongodb.net/plant_encyclopedia';
 
-// Plant Schema (using your existing 'plant' collection)
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+})
+.then(() => console.log('✅ Connected to MongoDB Atlas'))
+.catch(err => console.error('❌ MongoDB connection error:', err));
+
+// Plant Schema
 const plantSchema = new mongoose.Schema({
-  name: String,
-  scientificName: String,
-  category: String,
-  description: String,
-  detailedInfo: String,
-  mainImage: String,
-  images: [{ url: String, alt: String, caption: String }],
+  name: { type: String, required: true },
+  scientificName: { type: String, required: true },
+  category: { type: String, required: true, enum: ['plant', 'tree', 'flower', 'fruit'] },
+  description: { type: String, required: true },
+  detailedInfo: { type: String, default: '' },
+  mainImage: { type: String, default: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400' },
+  origin: { type: String, required: true },
+  family: { type: String, default: '' },
+  difficulty: { type: String, enum: ['beginner', 'intermediate', 'expert'], default: 'beginner' },
+  toxicity: { type: String, enum: ['non-toxic', 'mildly-toxic', 'toxic'], default: 'non-toxic' },
   careInstructions: {
-    sunlight: String,
-    water: String,
-    soil: String,
-    temperature: String
+    sunlight: { type: String, default: '' },
+    water: { type: String, default: '' },
+    soil: { type: String, default: '' },
+    temperature: { type: String, default: '' }
   },
-  characteristics: {
-    height: String,
-    spread: String,
-    growthRate: String,
-    lifespan: String
-  },
-  origin: String,
-  family: String,
-  difficulty: String,
-  toxicity: String,
-  tags: [String],
-  commonUses: [String],
-  funFacts: [String],
-  contributor: String,
-  isUserContribution: Boolean,
+  characteristics: { type: Object, default: {} },
+  tags: { type: [String], default: [] },
+  contributor: { type: String, default: 'Anonymous' },
+  isUserContribution: { type: Boolean, default: true },
   likes: { type: Number, default: 0 },
   views: { type: Number, default: 0 },
-  createdAt: { type: Date, default: Date.now }
-}, { collection: 'plant' }); // Uses your existing collection
+  images: [{
+    url: String,
+    alt: String
+  }]
+}, { timestamps: true });
 
 const Plant = mongoose.model('Plant', plantSchema);
 
-// GET all plants
+// Routes
+
+// GET all plants with optional filtering
 app.get('/api/plants', async (req, res) => {
   try {
-    const { category, search } = req.query;
-    let query = {};
+    const { category, search, limit = 20, page = 1 } = req.query;
+    const query = {};
     
-    if (category && category !== 'all') query.category = category;
+    if (category && category !== 'all') {
+      query.category = category;
+    }
+    
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -69,49 +71,125 @@ app.get('/api/plants', async (req, res) => {
       ];
     }
     
-    const plants = await Plant.find(query).sort({ createdAt: -1 });
-    res.json({ success: true, data: plants, total: plants.length });
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const plants = await Plant.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    const total = await Plant.countDocuments(query);
+    
+    res.json({
+      success: true,
+      data: plants,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error fetching plants:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// GET single plant
+// GET single plant by ID
 app.get('/api/plants/:id', async (req, res) => {
   try {
     const plant = await Plant.findById(req.params.id);
-    if (!plant) return res.status(404).json({ success: false, message: 'Not found' });
+    if (!plant) {
+      return res.status(404).json({ success: false, message: 'Plant not found' });
+    }
     
-    plant.views = (plant.views || 0) + 1;
+    // Increment views
+    plant.views += 1;
     await plant.save();
     
     res.json({ success: true, data: plant });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error fetching plant:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// POST new plant
+// POST create new plant
 app.post('/api/plants', async (req, res) => {
   try {
-    const plant = await Plant.create(req.body);
+    const plantData = req.body;
+    
+    // Validate required fields
+    const requiredFields = ['name', 'scientificName', 'category', 'description', 'origin'];
+    for (const field of requiredFields) {
+      if (!plantData[field]) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Missing required field: ${field}` 
+        });
+      }
+    }
+    
+    const plant = new Plant(plantData);
+    await plant.save();
+    
     res.status(201).json({ success: true, data: plant });
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('Error creating plant:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// POST like
-app.post('/api/plants/:id/like', async (req, res) => {
+// PUT update plant
+app.put('/api/plants/:id', async (req, res) => {
   try {
     const plant = await Plant.findByIdAndUpdate(
       req.params.id,
-      { $inc: { likes: 1 } },
-      { new: true }
+      req.body,
+      { new: true, runValidators: true }
     );
-    res.json({ success: true, likes: plant?.likes || 0 });
+    
+    if (!plant) {
+      return res.status(404).json({ success: false, message: 'Plant not found' });
+    }
+    
+    res.json({ success: true, data: plant });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error updating plant:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// DELETE plant
+app.delete('/api/plants/:id', async (req, res) => {
+  try {
+    const plant = await Plant.findByIdAndDelete(req.params.id);
+    if (!plant) {
+      return res.status(404).json({ success: false, message: 'Plant not found' });
+    }
+    res.json({ success: true, message: 'Plant deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting plant:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// POST like a plant
+app.post('/api/plants/:id/like', async (req, res) => {
+  try {
+    const plant = await Plant.findById(req.params.id);
+    if (!plant) {
+      return res.status(404).json({ success: false, message: 'Plant not found' });
+    }
+    
+    plant.likes += 1;
+    await plant.save();
+    
+    res.json({ success: true, data: { likes: plant.likes } });
+  } catch (error) {
+    console.error('Error liking plant:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
@@ -119,42 +197,66 @@ app.post('/api/plants/:id/like', async (req, res) => {
 app.get('/api/stats', async (req, res) => {
   try {
     const total = await Plant.countDocuments();
+    const contributions = await Plant.countDocuments({ isUserContribution: true });
     
     const categories = await Plant.aggregate([
       { $group: { _id: '$category', count: { $sum: 1 } } }
     ]);
     
-    const contributions = await Plant.countDocuments({ isUserContribution: true });
-    
-    // Convert to object
-    const categoryObj = {};
-    categories.forEach(c => {
-      if (c._id) categoryObj[c._id] = c.count;
+    const categoriesObj = {};
+    categories.forEach(item => {
+      categoriesObj[item._id] = item.count;
     });
     
     res.json({
       success: true,
       data: {
-        total: total,
-        categories: categoryObj,
-        contributions: contributions
+        total,
+        contributions,
+        categories: categoriesObj
       }
     });
   } catch (error) {
-    console.error('Stats error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
-// Serve HTML
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+// GET search plants by name/scientific name
+app.get('/api/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) {
+      return res.json({ success: true, data: [] });
+    }
+    
+    const plants = await Plant.find({
+      $or: [
+        { name: { $regex: q, $options: 'i' } },
+        { scientificName: { $regex: q, $options: 'i' } }
+      ]
+    }).limit(10);
+    
+    res.json({ success: true, data: plants });
+  } catch (error) {
+    console.error('Error searching plants:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
 });
 
 // Start server
-const PORT = 5000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`);
-  console.log(`📦 Database: plant_encyclopedia`);
-  console.log(`📂 Collection: plant`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', async () => {
+  try {
+    await mongoose.connection.close();
+    console.log('MongoDB connection closed');
+    process.exit(0);
+  } catch (err) {
+    console.error('Error closing MongoDB connection:', err);
+    process.exit(1);
+  }
 });

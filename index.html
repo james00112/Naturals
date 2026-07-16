@@ -859,371 +859,650 @@
   </div>
 
   <script>
-    const API_URL = 'http://localhost:5000/api/plants';
-    const STATS_URL = 'http://localhost:5000/api/stats';
-    let currentCategory = 'all';
-    let currentSearch = '';
+
+    const express = require('express');
+const cors = require('cors');
+const mongoose = require('mongoose');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+
+// MongoDB connection - Using your exact connection string
+const MONGODB_URI = 'mongodb+srv://916_db_user:0124@sample.8svhdg.mongodb.net/';
+
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  dbName: 'plantera' // Specify the database name
+})
+.then(() => console.log('✅ Connected to MongoDB Atlas'))
+.catch(err => console.error('❌ MongoDB connection error:', err));
+
+// Plant Schema
+const plantSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  scientificName: { type: String, required: true },
+  category: { type: String, required: true, enum: ['plant', 'tree', 'flower', 'fruit'] },
+  description: { type: String, required: true },
+  detailedInfo: { type: String, default: '' },
+  mainImage: { type: String, default: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400' },
+  origin: { type: String, required: true },
+  family: { type: String, default: '' },
+  difficulty: { type: String, enum: ['beginner', 'intermediate', 'expert'], default: 'beginner' },
+  toxicity: { type: String, enum: ['non-toxic', 'mildly-toxic', 'toxic'], default: 'non-toxic' },
+  careInstructions: {
+    sunlight: { type: String, default: '' },
+    water: { type: String, default: '' },
+    soil: { type: String, default: '' },
+    temperature: { type: String, default: '' }
+  },
+  characteristics: { type: Object, default: {} },
+  tags: { type: [String], default: [] },
+  contributor: { type: String, default: 'Anonymous' },
+  isUserContribution: { type: Boolean, default: true },
+  likes: { type: Number, default: 0 },
+  views: { type: Number, default: 0 },
+  images: [{
+    url: String,
+    alt: String
+  }]
+}, { timestamps: true });
+
+const Plant = mongoose.model('Plant', plantSchema);
+
+// Routes
+
+// GET all plants with optional filtering
+app.get('/api/plants', async (req, res) => {
+  try {
+    const { category, search, limit = 20, page = 1 } = req.query;
+    const query = {};
+    
+    if (category && category !== 'all') {
+      query.category = category;
+    }
+    
+    if (search) {
+      query.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { scientificName: { $regex: search, $options: 'i' } },
+        { description: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const plants = await Plant.find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+    
+    const total = await Plant.countDocuments(query);
+    
+    res.json({
+      success: true,
+      data: plants,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching plants:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET single plant by ID
+app.get('/api/plants/:id', async (req, res) => {
+  try {
+    const plant = await Plant.findById(req.params.id);
+    if (!plant) {
+      return res.status(404).json({ success: false, message: 'Plant not found' });
+    }
+    
+    // Increment views
+    plant.views += 1;
+    await plant.save();
+    
+    res.json({ success: true, data: plant });
+  } catch (error) {
+    console.error('Error fetching plant:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// POST create new plant
+app.post('/api/plants', async (req, res) => {
+  try {
+    const plantData = req.body;
+    
+    // Validate required fields
+    const requiredFields = ['name', 'scientificName', 'category', 'description', 'origin'];
+    for (const field of requiredFields) {
+      if (!plantData[field]) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Missing required field: ${field}` 
+        });
+      }
+    }
+    
+    const plant = new Plant(plantData);
+    await plant.save();
+    
+    res.status(201).json({ success: true, data: plant });
+  } catch (error) {
+    console.error('Error creating plant:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// PUT update plant
+app.put('/api/plants/:id', async (req, res) => {
+  try {
+    const plant = await Plant.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+    
+    if (!plant) {
+      return res.status(404).json({ success: false, message: 'Plant not found' });
+    }
+    
+    res.json({ success: true, data: plant });
+  } catch (error) {
+    console.error('Error updating plant:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// DELETE plant
+app.delete('/api/plants/:id', async (req, res) => {
+  try {
+    const plant = await Plant.findByIdAndDelete(req.params.id);
+    if (!plant) {
+      return res.status(404).json({ success: false, message: 'Plant not found' });
+    }
+    res.json({ success: true, message: 'Plant deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting plant:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// POST like a plant
+app.post('/api/plants/:id/like', async (req, res) => {
+  try {
+    const plant = await Plant.findById(req.params.id);
+    if (!plant) {
+      return res.status(404).json({ success: false, message: 'Plant not found' });
+    }
+    
+    plant.likes += 1;
+    await plant.save();
+    
+    res.json({ success: true, data: { likes: plant.likes } });
+  } catch (error) {
+    console.error('Error liking plant:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET statistics
+app.get('/api/stats', async (req, res) => {
+  try {
+    const total = await Plant.countDocuments();
+    const contributions = await Plant.countDocuments({ isUserContribution: true });
+    
+    const categories = await Plant.aggregate([
+      { $group: { _id: '$category', count: { $sum: 1 } } }
+    ]);
+    
+    const categoriesObj = {};
+    categories.forEach(item => {
+      categoriesObj[item._id] = item.count;
+    });
+    
+    res.json({
+      success: true,
+      data: {
+        total,
+        contributions,
+        categories: categoriesObj
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching stats:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// GET search plants by name/scientific name
+app.get('/api/search', async (req, res) => {
+  try {
+    const { q } = req.query;
+    if (!q) {
+      return res.json({ success: true, data: [] });
+    }
+    
+    const plants = await Plant.find({
+      $or: [
+        { name: { $regex: q, $options: 'i' } },
+        { scientificName: { $regex: q, $options: 'i' } }
+      ]
+    }).limit(10);
+    
+    res.json({ success: true, data: plants });
+  } catch (error) {
+    console.error('Error searching plants:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
+// Root endpoint
+app.get('/', (req, res) => {
+  res.json({ 
+    message: '🌿 Plantera API', 
+    endpoints: {
+      plants: '/api/plants',
+      stats: '/api/stats',
+      search: '/api/search?q=query'
+    }
+  });
+});
+
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`📊 API endpoint: http://localhost:${PORT}/api/plants`);
+});
+
+// Handle graceful shutdown
+process.on('SIGINT', async () => {
+  try {
+    await mongoose.connection.close();
+    console.log('MongoDB connection closed');
+    process.exit(0);
+  } catch (err) {
+    console.error('Error closing MongoDB connection:', err);
+    process.exit(1);
+  }
+});
+    
+    // const API_URL = 'http://localhost:5000/api/plants';
+    // const STATS_URL = 'http://localhost:5000/api/stats';
+   
+    // let currentCategory = 'all';
+    // let currentSearch = '';
 
     // Load plants from YOUR MongoDB database
-    async function loadPlants() {
-      showLoading(true);
-      try {
-        const params = new URLSearchParams();
-        if (currentCategory !== 'all') params.append('category', currentCategory);
-        if (currentSearch) params.append('search', currentSearch);
+    // async function loadPlants() {
+    //   showLoading(true);
+    //   try {
+    //     const params = new URLSearchParams();
+    //     if (currentCategory !== 'all') params.append('category', currentCategory);
+    //     if (currentSearch) params.append('search', currentSearch);
         
-        const response = await fetch(`${API_URL}?${params}`);
-        const data = await response.json();
+    //     const response = await fetch(`${API_URL}?${params}`);
+    //     const data = await response.json();
         
-        if (data.success) {
-          renderPlants(data.data);
-        } else {
-          showError('Failed to load plants');
-        }
-      } catch (error) {
-        console.error('Error loading plants:', error);
-        showError('Cannot connect to database. Make sure server is running.');
-      } finally {
-        showLoading(false);
-      }
-    }
+    //     if (data.success) {
+    //       renderPlants(data.data);
+    //     } else {
+    //       showError('Failed to load plants');
+    //     }
+    //   } catch (error) {
+    //     console.error('Error loading plants:', error);
+    //     showError('Cannot connect to database. Make sure server is running.');
+    //   } finally {
+    //     showLoading(false);
+    //   }
+    // }
 
     // Render plants
-    function renderPlants(plants) {
-      const grid = document.getElementById('plantGrid');
+    // function renderPlants(plants) {
+    //   const grid = document.getElementById('plantGrid');
       
-      if (!plants || plants.length === 0) {
-        grid.innerHTML = `
-          <div style="grid-column: 1/-1; text-align: center; padding: 4rem;">
-            <i class="fas fa-leaf" style="font-size: 4rem; opacity: 0.3;"></i>
-            <h3>No plants found</h3>
-            <p style="color: #666;">Be the first to contribute!</p>
-          </div>
-        `;
-        return;
-      }
+    //   if (!plants || plants.length === 0) {
+    //     grid.innerHTML = `
+    //       <div style="grid-column: 1/-1; text-align: center; padding: 4rem;">
+    //         <i class="fas fa-leaf" style="font-size: 4rem; opacity: 0.3;"></i>
+    //         <h3>No plants found</h3>
+    //         <p style="color: #666;">Be the first to contribute!</p>
+    //       </div>
+    //     `;
+    //     return;
+    //   }
 
-      grid.innerHTML = plants.map(plant => `
-        <div class="plant-card" onclick="showPlantDetail('${plant._id}')">
-          <div class="card-image">
-            <img src="${plant.mainImage || 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400'}" 
-                alt="${escapeHtml(plant.name)}" 
-                onerror="this.src='https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400'">
-            <span class="card-category-badge">${plant.category}</span>
-            ${plant.isUserContribution ? '<span class="contribution-badge"><i class="fas fa-user"></i> Community</span>' : ''}
-          </div>
-          <div class="card-content">
-            <h3>${escapeHtml(plant.name)}</h3>
-            <span class="scientific-name">${escapeHtml(plant.scientificName)}</span>
-            <div class="card-details">
-              <span class="detail-tag"><i class="fas fa-sun"></i> ${escapeHtml(plant.careInstructions?.sunlight || 'N/A')}</span>
-              <span class="detail-tag"><i class="fas fa-tint"></i> ${escapeHtml(plant.careInstructions?.water || 'N/A')}</span>
-            </div>
-            <div class="card-stats">
-              <span><i class="fas fa-heart"></i> ${plant.likes || 0}</span>
-              <span><i class="fas fa-eye"></i> ${plant.views || 0}</span>
-              ${plant.contributor ? `<span><i class="fas fa-user"></i> ${escapeHtml(plant.contributor)}</span>` : ''}
-            </div>
-          </div>
-        </div>
-      `).join('');
-    }
+    //   grid.innerHTML = plants.map(plant => `
+    //     <div class="plant-card" onclick="showPlantDetail('${plant._id}')">
+    //       <div class="card-image">
+    //         <img src="${plant.mainImage || 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400'}" 
+    //             alt="${escapeHtml(plant.name)}" 
+    //             onerror="this.src='https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400'">
+    //         <span class="card-category-badge">${plant.category}</span>
+    //         ${plant.isUserContribution ? '<span class="contribution-badge"><i class="fas fa-user"></i> Community</span>' : ''}
+    //       </div>
+    //       <div class="card-content">
+    //         <h3>${escapeHtml(plant.name)}</h3>
+    //         <span class="scientific-name">${escapeHtml(plant.scientificName)}</span>
+    //         <div class="card-details">
+    //           <span class="detail-tag"><i class="fas fa-sun"></i> ${escapeHtml(plant.careInstructions?.sunlight || 'N/A')}</span>
+    //           <span class="detail-tag"><i class="fas fa-tint"></i> ${escapeHtml(plant.careInstructions?.water || 'N/A')}</span>
+    //         </div>
+    //         <div class="card-stats">
+    //           <span><i class="fas fa-heart"></i> ${plant.likes || 0}</span>
+    //           <span><i class="fas fa-eye"></i> ${plant.views || 0}</span>
+    //           ${plant.contributor ? `<span><i class="fas fa-user"></i> ${escapeHtml(plant.contributor)}</span>` : ''}
+    //         </div>
+    //       </div>
+    //     </div>
+    //   `).join('');
+    // }
 
     // Show plant detail
-    async function showPlantDetail(id) {
-      try {
-        const response = await fetch(`${API_URL}/${id}`);
-        const data = await response.json();
+//     async function showPlantDetail(id) {
+//       try {
+//         const response = await fetch(`${API_URL}/${id}`);
+//         const data = await response.json();
         
-        if (data.success) {
-          const plant = data.data;
-          showPlantModal(plant);
-        }
-      } catch (error) {
-        console.error('Error:', error);
-        alert('Failed to load plant details');
-      }
-    }
+//         if (data.success) {
+//           const plant = data.data;
+//           showPlantModal(plant);
+//         }
+//       } catch (error) {
+//         console.error('Error:', error);
+//         alert('Failed to load plant details');
+//       }
+//     }
 
-    function showPlantModal(plant) {
-      const modal = document.createElement('div');
-      modal.className = 'modal';
-      modal.style.display = 'block';
-      modal.innerHTML = `
-        <div class="modal-content" style="max-width: 900px; max-height: 85vh; overflow-y: auto;">
-          <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
-          <div style="display: grid; grid-template-columns: 300px 1fr; gap: 2rem; margin-bottom: 2rem;">
-            <div>
-              <img src="${plant.mainImage || 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400'}" 
-                  alt="${escapeHtml(plant.name)}" 
-                  style="width: 100%; height: 300px; object-fit: cover; border-radius: 15px;">
-              <button onclick="likePlant('${plant._id}')" 
-                      style="margin-top: 1rem; width: 100%; padding: 0.8rem; background: var(--gradient); color: white; border: none; border-radius: 15px; cursor: pointer; font-size: 1.1rem;">
-                <i class="fas fa-heart"></i> Like (${plant.likes || 0})
-              </button>
-            </div>
-            <div>
-              <h2 style="color: var(--primary); font-size: 2rem;">${escapeHtml(plant.name)}</h2>
-              <p style="font-style: italic; color: #666; font-size: 1.2rem;">${escapeHtml(plant.scientificName)}</p>
-              ${plant.contributor ? `<p style="color: #ff5722;"><i class="fas fa-user"></i> Contributed by: ${escapeHtml(plant.contributor)}</p>` : ''}
-              <p><strong>Category:</strong> ${plant.category}</p>
-              <p><strong>Family:</strong> ${escapeHtml(plant.family || 'N/A')}</p>
-              <p><strong>Origin:</strong> ${escapeHtml(plant.origin)}</p>
-              <p><strong>Difficulty:</strong> ${plant.difficulty}</p>
-              <p><strong>Toxicity:</strong> ${plant.toxicity}</p>
-              <p><strong>Views:</strong> ${plant.views || 0}</p>
-            </div>
-          </div>
-          <div style="margin: 1.5rem 0;">
-            <h3>📝 Description</h3>
-            <p>${escapeHtml(plant.detailedInfo || plant.description)}</p>
-          </div>
-          ${plant.images && plant.images.length > 0 ? `
-            <div style="margin: 1.5rem 0;">
-              <h3>📸 Gallery</h3>
-              <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
-                ${plant.images.map(img => `
-                  <img src="${img.url}" alt="${img.alt || ''}" 
-                      style="width: 150px; height: 150px; object-fit: cover; border-radius: 10px; cursor: pointer;">
-                `).join('')}
-              </div>
-            </div>
-          ` : ''}
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
-            <div style="background: var(--secondary); padding: 1.5rem; border-radius: 15px;">
-              <h4>📏 Characteristics</h4>
-              ${plant.characteristics ? Object.entries(plant.characteristics).filter(([_,v]) => v).map(([k,v]) => 
-                `<p><strong>${k}:</strong> ${v}</p>`
-              ).join('') : '<p>No data</p>'}
-            </div>
-            <div style="background: var(--secondary); padding: 1.5rem; border-radius: 15px;">
-              <h4>💚 Care Instructions</h4>
-              ${plant.careInstructions ? Object.entries(plant.careInstructions).filter(([_,v]) => v).map(([k,v]) => 
-                `<p><strong>${k}:</strong> ${v}</p>`
-              ).join('') : '<p>No data</p>'}
-            </div>
-          </div>
-          ${plant.tags && plant.tags.length > 0 ? `
-            <div style="margin-top: 1.5rem;">
-              <h4>🏷️ Tags</h4>
-              <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                ${plant.tags.map(tag => `<span style="background: var(--gradient); color: white; padding: 0.3rem 1rem; border-radius: 20px;">#${escapeHtml(tag)}</span>`).join('')}
-              </div>
-            </div>
-          ` : ''}
-        </div>
-      `;
+//     function showPlantModal(plant) {
+//       const modal = document.createElement('div');
+//       modal.className = 'modal';
+//       modal.style.display = 'block';
+//       modal.innerHTML = `
+//         <div class="modal-content" style="max-width: 900px; max-height: 85vh; overflow-y: auto;">
+//           <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+//           <div style="display: grid; grid-template-columns: 300px 1fr; gap: 2rem; margin-bottom: 2rem;">
+//             <div>
+//               <img src="${plant.mainImage || 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400'}" 
+//                   alt="${escapeHtml(plant.name)}" 
+//                   style="width: 100%; height: 300px; object-fit: cover; border-radius: 15px;">
+//               <button onclick="likePlant('${plant._id}')" 
+//                       style="margin-top: 1rem; width: 100%; padding: 0.8rem; background: var(--gradient); color: white; border: none; border-radius: 15px; cursor: pointer; font-size: 1.1rem;">
+//                 <i class="fas fa-heart"></i> Like (${plant.likes || 0})
+//               </button>
+//             </div>
+//             <div>
+//               <h2 style="color: var(--primary); font-size: 2rem;">${escapeHtml(plant.name)}</h2>
+//               <p style="font-style: italic; color: #666; font-size: 1.2rem;">${escapeHtml(plant.scientificName)}</p>
+//               ${plant.contributor ? `<p style="color: #ff5722;"><i class="fas fa-user"></i> Contributed by: ${escapeHtml(plant.contributor)}</p>` : ''}
+//               <p><strong>Category:</strong> ${plant.category}</p>
+//               <p><strong>Family:</strong> ${escapeHtml(plant.family || 'N/A')}</p>
+//               <p><strong>Origin:</strong> ${escapeHtml(plant.origin)}</p>
+//               <p><strong>Difficulty:</strong> ${plant.difficulty}</p>
+//               <p><strong>Toxicity:</strong> ${plant.toxicity}</p>
+//               <p><strong>Views:</strong> ${plant.views || 0}</p>
+//             </div>
+//           </div>
+//           <div style="margin: 1.5rem 0;">
+//             <h3>📝 Description</h3>
+//             <p>${escapeHtml(plant.detailedInfo || plant.description)}</p>
+//           </div>
+//           ${plant.images && plant.images.length > 0 ? `
+//             <div style="margin: 1.5rem 0;">
+//               <h3>📸 Gallery</h3>
+//               <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+//                 ${plant.images.map(img => `
+//                   <img src="${img.url}" alt="${img.alt || ''}" 
+//                       style="width: 150px; height: 150px; object-fit: cover; border-radius: 10px; cursor: pointer;">
+//                 `).join('')}
+//               </div>
+//             </div>
+//           ` : ''}
+//           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem;">
+//             <div style="background: var(--secondary); padding: 1.5rem; border-radius: 15px;">
+//               <h4>📏 Characteristics</h4>
+//               ${plant.characteristics ? Object.entries(plant.characteristics).filter(([_,v]) => v).map(([k,v]) => 
+//                 `<p><strong>${k}:</strong> ${v}</p>`
+//               ).join('') : '<p>No data</p>'}
+//             </div>
+//             <div style="background: var(--secondary); padding: 1.5rem; border-radius: 15px;">
+//               <h4>💚 Care Instructions</h4>
+//               ${plant.careInstructions ? Object.entries(plant.careInstructions).filter(([_,v]) => v).map(([k,v]) => 
+//                 `<p><strong>${k}:</strong> ${v}</p>`
+//               ).join('') : '<p>No data</p>'}
+//             </div>
+//           </div>
+//           ${plant.tags && plant.tags.length > 0 ? `
+//             <div style="margin-top: 1.5rem;">
+//               <h4>🏷️ Tags</h4>
+//               <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+//                 ${plant.tags.map(tag => `<span style="background: var(--gradient); color: white; padding: 0.3rem 1rem; border-radius: 20px;">#${escapeHtml(tag)}</span>`).join('')}
+//               </div>
+//             </div>
+//           ` : ''}
+//         </div>
+//       `;
       
-      document.body.appendChild(modal);
-      modal.addEventListener('click', (e) => {
-        if (e.target === modal) modal.remove();
-      });
-    }
+//       document.body.appendChild(modal);
+//       modal.addEventListener('click', (e) => {
+//         if (e.target === modal) modal.remove();
+//       });
+//     }
 
-    // Like plant
-    async function likePlant(id) {
-      try {
-        const response = await fetch(`${API_URL}/${id}/like`, { method: 'POST' });
-        const data = await response.json();
-        if (data.success) {
-          loadPlants(); // Refresh
-        }
-      } catch (error) {
-        console.error('Error:', error);
-      }
-    }
+//     // Like plant
+//     async function likePlant(id) {
+//       try {
+//         const response = await fetch(`${API_URL}/${id}/like`, { method: 'POST' });
+//         const data = await response.json();
+//         if (data.success) {
+//           loadPlants(); // Refresh
+//         }
+//       } catch (error) {
+//         console.error('Error:', error);
+//       }
+//     }
 
-    // Submit new plant to database
-    async function handleContribution(event) {
-      event.preventDefault();
+//     // Submit new plant to database
+//     async function handleContribution(event) {
+//       event.preventDefault();
       
-      const form = event.target;
-      const formData = new FormData(form);
+//       const form = event.target;
+//       const formData = new FormData(form);
       
-      const newPlant = {
-        name: formData.get('name'),
-        scientificName: formData.get('scientificName'),
-        category: formData.get('category'),
-        description: formData.get('description'),
-        detailedInfo: formData.get('detailedInfo') || formData.get('description'),
-        mainImage: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400',
-        origin: formData.get('origin'),
-        family: formData.get('family') || '',
-        difficulty: formData.get('difficulty') || 'beginner',
-        toxicity: formData.get('toxicity') || 'non-toxic',
-        careInstructions: {
-          sunlight: formData.get('sunlight') || '',
-          water: formData.get('water') || '',
-          soil: formData.get('soil') || '',
-          temperature: formData.get('temperature') || ''
-        },
-        characteristics: {},
-        tags: formData.get('tags') ? formData.get('tags').split(',').map(t => t.trim()).filter(Boolean) : [],
-        contributor: formData.get('contributor') || 'Anonymous',
-        isUserContribution: true
-      };
+//       const newPlant = {
+//         name: formData.get('name'),
+//         scientificName: formData.get('scientificName'),
+//         category: formData.get('category'),
+//         description: formData.get('description'),
+//         detailedInfo: formData.get('detailedInfo') || formData.get('description'),
+//         mainImage: 'https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?w=400',
+//         origin: formData.get('origin'),
+//         family: formData.get('family') || '',
+//         difficulty: formData.get('difficulty') || 'beginner',
+//         toxicity: formData.get('toxicity') || 'non-toxic',
+//         careInstructions: {
+//           sunlight: formData.get('sunlight') || '',
+//           water: formData.get('water') || '',
+//           soil: formData.get('soil') || '',
+//           temperature: formData.get('temperature') || ''
+//         },
+//         characteristics: {},
+//         tags: formData.get('tags') ? formData.get('tags').split(',').map(t => t.trim()).filter(Boolean) : [],
+//         contributor: formData.get('contributor') || 'Anonymous',
+//         isUserContribution: true
+//       };
 
-      try {
-        const response = await fetch(API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(newPlant)
-        });
+//       try {
+//         const response = await fetch(API_URL, {
+//           method: 'POST',
+//           headers: { 'Content-Type': 'application/json' },
+//           body: JSON.stringify(newPlant)
+//         });
         
-        const data = await response.json();
+//         const data = await response.json();
         
-        if (data.success) {
-          alert('✅ Plant added to database successfully!');
-          closeContributeModal();
-          form.reset();
-          document.getElementById('mainImagePreview').innerHTML = '';
-          document.getElementById('additionalImagesPreview').innerHTML = '';
-          loadPlants();
-        } else {
-          alert('❌ Error: ' + data.message);
-        }
-      } catch (error) {
-        console.error('Error:', error);
-        alert('❌ Cannot connect to database. Is the server running?');
-      }
-    }
+//         if (data.success) {
+//           alert('✅ Plant added to database successfully!');
+//           closeContributeModal();
+//           form.reset();
+//           document.getElementById('mainImagePreview').innerHTML = '';
+//           document.getElementById('additionalImagesPreview').innerHTML = '';
+//           loadPlants();
+//         } else {
+//           alert('❌ Error: ' + data.message);
+//         }
+//       } catch (error) {
+//         console.error('Error:', error);
+//         alert('❌ Cannot connect to database. Is the server running?');
+//       }
+//     }
 
-    // Show statistics from database
-    async function showStats() {
-      try {
-        const response = await fetch(STATS_URL);
-        const data = await response.json();
+//     // Show statistics from database
+//     async function showStats() {
+//       try {
+//         const response = await fetch(STATS_URL);
+//         const data = await response.json();
         
-        if (data.success) {
-          const stats = data.data;
-          const modal = document.getElementById('statsModal');
-          const content = document.getElementById('statsContent');
+//         if (data.success) {
+//           const stats = data.data;
+//           const modal = document.getElementById('statsModal');
+//           const content = document.getElementById('statsContent');
           
-          content.innerHTML = `
-            <div class="stats-grid">
-              <div class="stat-card">
-                <i class="fas fa-database" style="color: #2d5a27;"></i>
-                <h3>Total Species</h3>
-                <p class="stat-number">${stats.total}</p>
-              </div>
-              <div class="stat-card">
-                <i class="fas fa-users" style="color: #ff9800;"></i>
-                <h3>Community Posts</h3>
-                <p class="stat-number">${stats.contributions}</p>
-              </div>
-              ${Object.entries(stats.categories || {}).map(([cat, count]) => `
-                <div class="stat-card">
-                  <i class="fas fa-${cat === 'plant' ? 'leaf' : cat === 'tree' ? 'tree' : cat === 'flower' ? 'spa' : 'apple-alt'}" style="color: #4caf50;"></i>
-                  <h3>${cat.charAt(0).toUpperCase() + cat.slice(1)}s</h3>
-                  <p class="stat-number">${count}</p>
-                </div>
-              `).join('')}
-            </div>
-          `;
+//           content.innerHTML = `
+//             <div class="stats-grid">
+//               <div class="stat-card">
+//                 <i class="fas fa-database" style="color: #2d5a27;"></i>
+//                 <h3>Total Species</h3>
+//                 <p class="stat-number">${stats.total}</p>
+//               </div>
+//               <div class="stat-card">
+//                 <i class="fas fa-users" style="color: #ff9800;"></i>
+//                 <h3>Community Posts</h3>
+//                 <p class="stat-number">${stats.contributions}</p>
+//               </div>
+//               ${Object.entries(stats.categories || {}).map(([cat, count]) => `
+//                 <div class="stat-card">
+//                   <i class="fas fa-${cat === 'plant' ? 'leaf' : cat === 'tree' ? 'tree' : cat === 'flower' ? 'spa' : 'apple-alt'}" style="color: #4caf50;"></i>
+//                   <h3>${cat.charAt(0).toUpperCase() + cat.slice(1)}s</h3>
+//                   <p class="stat-number">${count}</p>
+//                 </div>
+//               `).join('')}
+//             </div>
+//           `;
           
-          modal.style.display = 'block';
-        }
-      } catch (error) {
-        console.error('Error:', error);
-        alert('Cannot load statistics. Is the server running?');
-      }
-    }
+//           modal.style.display = 'block';
+//         }
+//       } catch (error) {
+//         console.error('Error:', error);
+//         alert('Cannot load statistics. Is the server running?');
+//       }
+//     }
 
-    function closeStats() {
-      document.getElementById('statsModal').style.display = 'none';
-    }
+//     function closeStats() {
+//       document.getElementById('statsModal').style.display = 'none';
+//     }
 
-    // Filter by category
-    function filterCategory(category, btn) {
-      currentCategory = category;
-      document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      loadPlants();
-    }
+//     // Filter by category
+//     function filterCategory(category, btn) {
+//       currentCategory = category;
+//       document.querySelectorAll('.category-btn').forEach(b => b.classList.remove('active'));
+//       btn.classList.add('active');
+//       loadPlants();
+//     }
 
-    // Search
-    function searchPlants() {
-      currentSearch = document.getElementById('searchInput').value;
-      loadPlants();
-    }
+//     // Search
+//     function searchPlants() {
+//       currentSearch = document.getElementById('searchInput').value;
+//       loadPlants();
+//     }
 
-    // Modal controls
-    function openContributeModal() {
-      document.getElementById('contributeModal').style.display = 'block';
-    }
+//     // Modal controls
+//     function openContributeModal() {
+//       document.getElementById('contributeModal').style.display = 'block';
+//     }
 
-    function closeContributeModal() {
-      document.getElementById('contributeModal').style.display = 'none';
-    }
+//     function closeContributeModal() {
+//       document.getElementById('contributeModal').style.display = 'none';
+//     }
 
-    // Image previews
-    function previewMainImage(event) {
-      const file = event.target.files[0];
-      if (file) {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          document.getElementById('mainImagePreview').innerHTML = `<img src="${e.target.result}" alt="Preview">`;
-        };
-        reader.readAsDataURL(file);
-      }
-    }
+//     // Image previews
+//     function previewMainImage(event) {
+//       const file = event.target.files[0];
+//       if (file) {
+//         const reader = new FileReader();
+//         reader.onload = (e) => {
+//           document.getElementById('mainImagePreview').innerHTML = `<img src="${e.target.result}" alt="Preview">`;
+//         };
+//         reader.readAsDataURL(file);
+//       }
+//     }
 
-    function previewAdditionalImages(event) {
-      const preview = document.getElementById('additionalImagesPreview');
-      preview.innerHTML = '';
-      Array.from(event.target.files).forEach(file => {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-          preview.innerHTML += `<img src="${e.target.result}" alt="Preview">`;
-        };
-        reader.readAsDataURL(file);
-      });
-    }
+//     function previewAdditionalImages(event) {
+//       const preview = document.getElementById('additionalImagesPreview');
+//       preview.innerHTML = '';
+//       Array.from(event.target.files).forEach(file => {
+//         const reader = new FileReader();
+//         reader.onload = (e) => {
+//           preview.innerHTML += `<img src="${e.target.result}" alt="Preview">`;
+//         };
+//         reader.readAsDataURL(file);
+//       });
+//     }
 
-    // Utility functions
-    function showLoading(show) {
-      document.getElementById('loadingSpinner').style.display = show ? 'flex' : 'none';
-    }
+//     // Utility functions
+//     function showLoading(show) {
+//       document.getElementById('loadingSpinner').style.display = show ? 'flex' : 'none';
+//     }
 
-    function showError(message) {
-      const grid = document.getElementById('plantGrid');
-      grid.innerHTML = `
-        <div style="grid-column: 1/-1; text-align: center; padding: 4rem;">
-          <i class="fas fa-exclamation-circle" style="font-size: 4rem; color: #e74c3c;"></i>
-          <h3>Connection Error</h3>
-          <p style="color: #666;">${message}</p>
-        </div>
-      `;
-    }
+//     function showError(message) {
+//       const grid = document.getElementById('plantGrid');
+//       grid.innerHTML = `
+//         <div style="grid-column: 1/-1; text-align: center; padding: 4rem;">
+//           <i class="fas fa-exclamation-circle" style="font-size: 4rem; color: #e74c3c;"></i>
+//           <h3>Connection Error</h3>
+//           <p style="color: #666;">${message}</p>
+//         </div>
+//       `;
+//     }
 
-    function escapeHtml(text) {
-      if (!text) return '';
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
-    }
+//     function escapeHtml(text) {
+//       if (!text) return '';
+//       const div = document.createElement('div');
+//       div.textContent = text;
+//       return div.innerHTML;
+//     }
 
-    // Close modals on outside click
-    window.onclick = function(event) {
-      if (event.target.classList.contains('modal')) {
-        event.target.style.display = 'none';
-      }
-    }
+//     // Close modals on outside click
+//     window.onclick = function(event) {
+//       if (event.target.classList.contains('modal')) {
+//         event.target.style.display = 'none';
+//       }
+//     }
 
-    // Enter key for search
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && document.activeElement === document.getElementById('searchInput')) {
-        searchPlants();
-      }
-      if (e.key === 'Escape') {
-        document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
-      }
-    });
+//     // Enter key for search
+//     document.addEventListener('keydown', (e) => {
+//       if (e.key === 'Enter' && document.activeElement === document.getElementById('searchInput')) {
+//         searchPlants();
+//       }
+//       if (e.key === 'Escape') {
+//         document.querySelectorAll('.modal').forEach(m => m.style.display = 'none');
+//       }
+//     });
 
-    // Load plants on page load
-    document.addEventListener('DOMContentLoaded', () => {
-      loadPlants();
-    });
-  </script>
-</body>
-</html>
+//     // Load plants on page load
+//     document.addEventListener('DOMContentLoaded', () => {
+//       loadPlants();
+//     });
+   </script>
+ </body>
+ </html>

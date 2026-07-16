@@ -12,7 +12,8 @@ app.use(express.json());
 app.use(express.static('public'));
 
 // Connect to your MongoDB
-mongoose.connect('mongodb://localhost:27017/plant_encyclopedia')
+// mongoose.connect('mongodb://localhost:27017/plant_encyclopedia')
+mongoose.connect('mongodb+srv://ydummy916_db_user:Slsu0124@webtesting.8sruqhq.mongodb.net/plant_encyclopedia')
   .then(() => console.log('✅ Connected to MongoDB'))
   .catch(err => console.error('❌ MongoDB Error:', err));
 

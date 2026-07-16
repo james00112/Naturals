@@ -1,3 +1,4 @@
+// can add to database but statistics are not functioning and the image file uploaded when uploading new data/species are not generated
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
